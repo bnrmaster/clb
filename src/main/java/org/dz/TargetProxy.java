@@ -3,6 +3,7 @@ package org.dz;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.Socket;
 import java.util.concurrent.Executors;
 import java.util.concurrent.SynchronousQueue;
@@ -21,7 +22,6 @@ public class TargetProxy {
     public TargetProxy(String ip, int port, int corePoolSize, int maxPoolSize, int keepAliveTime) {
         this.ip = ip;
         this.port = port;
-
         this.dataForwardPool = new ThreadPoolExecutor(
                 corePoolSize,
                 maxPoolSize,
@@ -49,25 +49,16 @@ public class TargetProxy {
     public void recieve(Socket frontSocket) {
         Socket proxySocket = null;
         try {
-            proxySocket = new Socket(this.ip, this.port);
-            dataForwardPool.execute(new StreamTransfer(frontSocket, proxySocket));
-            dataBackwardPool.execute(new StreamTransfer(proxySocket, frontSocket));
+            proxySocket = new Socket(InetAddress.getByName(this.ip), this.port);
+            dataForwardPool.execute(new SocketTransfer(frontSocket, proxySocket));
+            dataBackwardPool.execute(new SocketTransfer(proxySocket, frontSocket));
         } catch (IOException e) {
             e.printStackTrace();
-        } finally {
-            try {
-                if (null != proxySocket) {
-                    proxySocket.close();
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
         }
-
     }
 
 
-    class StreamTransfer implements Runnable {
+    class SocketTransfer implements Runnable {
 
         /**
          * 读入流的数据的套接字。
@@ -85,38 +76,38 @@ public class TargetProxy {
          * @param readSocket 读取数据的套接字。
          * @param writeSocket 输出数据的套接字。
          */
-        public StreamTransfer(Socket readSocket, Socket writeSocket) {
+        public SocketTransfer(Socket readSocket, Socket writeSocket) {
             this.readSocket = readSocket;
             this.writeSocket = writeSocket;
         }
 
         @Override
         public void run() {
-            System.out.println("proxy run");
             byte[] b = new byte[1024];
             InputStream is = null;
             OutputStream os = null;
             try {
                 is = readSocket.getInputStream();
                 os = writeSocket.getOutputStream();
+                System.out.println("transfer begin from " + readSocket.getInetAddress().getHostAddress()
+                        + " to "+ writeSocket.getInetAddress().getHostAddress());
                 while(!readSocket.isClosed() && !writeSocket.isClosed()){
                     int size = is.read(b);
                     if (size > -1) {
                         os.write(b, 0, size);
+                    } else {
+                        break;
                     }
                 }
-
+                System.out.println("transfer end from " + readSocket.getInetAddress().getHostAddress()
+                        + " to "+ writeSocket.getInetAddress().getHostAddress());
             } catch (IOException e) {
                 e.printStackTrace();
             } finally {
                 try {
-                    if (is != null) {
-                        is.close();
-                    }
-                    if (null != os) {
-                        os.flush();
-                        os.close();
-                    }
+                    is.close();
+                    os.flush();
+                    readSocket.close();
                 } catch (IOException e) {
                     e.printStackTrace();
                 }

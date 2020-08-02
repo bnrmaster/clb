@@ -9,17 +9,36 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
-public class FrontServer {
+public class LoadBalancer {
 
     private static final int MAX_CONNECTION_NUM = 50;
-    private static List<TargetProxy> targetProxies = new ArrayList<>();
-    private static ILoadBalanceStrategy lbStrategy = null;
-    private static String serverIp;
-    private static int serverPort;
+    private  List<TargetProxy> targetProxies = new ArrayList<>();
+    private  ILoadBalanceStrategy lbStrategy = null;
+    private  String serverIp;
+    private  int serverPort;
 
-    public static void start() {
-        init();
+    public LoadBalancer(int serverPort, Map<String, Integer> address, String strategy) {
+        // 配置到本地
+        this.serverIp = "0.0.0.0";
+        this.serverPort = serverPort;
+        address.forEach(
+                (ip, port)->{
+                    this.targetProxies.add(
+                            new TargetProxy(ip,
+                            port,
+                            10,
+                            100,
+                            1000)
+                    );
+                }
+        );
+
+        this.lbStrategy = LoadBalanceFactory.createInstance(strategy);
+    }
+
+    public void start() {
         ServerSocket ss = null;
         try {
             ss = new ServerSocket(serverPort, MAX_CONNECTION_NUM, InetAddress.getByName(serverIp));
@@ -43,22 +62,4 @@ public class FrontServer {
         }
 
     }
-
-    /**
-     读取被代理的后端服务器设置，初始化
-     */
-    private static void init() {
-        // TODO: 读取配置文件
-        serverIp = "0.0.0.0";
-        serverPort = 7777;
-        //TODO: 读取配置文件 实例化多个proxy
-        targetProxies.add(new TargetProxy("192.168.163.24",
-                4000,
-                10,
-                100,
-                1000));
-        //TODO: 读取配置文件 实例化负载均衡策略
-        lbStrategy = LoadBalanceFactory.createInstance("ROUND");
-    }
-
 }
